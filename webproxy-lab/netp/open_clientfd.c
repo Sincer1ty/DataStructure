@@ -13,8 +13,18 @@ int open_clientfd(char *hostname, char *port) {
     /* Walk the list for one that we can successfully connect to */
     for (p = listp; p; p = p->ai_next) {
         /* Create a socket descriptor */
-        if ((clientfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) < 0)
+        if ((clientfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) < 0) // 소켓 생성 실패
             continue;
         
+        /* Connect to the server */
+        if (connect(clientfd, p->ai_addr, p->ai_addrlen) != -1) // 연결 성공
+            break;
+        Close(clientfd); // 연결 실패
     }
+
+    Freeaddrinfo(listp);
+    if (!p) // 모든 연결 실패
+        return -1;
+    else
+        return clientfd;
 }
