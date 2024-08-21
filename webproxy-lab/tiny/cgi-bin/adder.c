@@ -15,7 +15,9 @@ int main(void)
 		// buf에서 &를 검색하고 그 위치에 대한 포인터를 반환
 		p=strchr(buf, '&');
 		*p='\0';
-		strcpy(arg1, buf);
+		buf=strchr(buf, '=');
+		strcpy(arg1, buf+1);
+		p=strchr(p+1, '=');
 		strcpy(arg2, p+1);
 		n1=atoi(arg1);
 		n2=atoi(arg2);

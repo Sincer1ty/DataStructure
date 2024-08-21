@@ -11,7 +11,7 @@
 void doit(int fd);
 void read_requesthdrs(rio_t *rp);
 int parse_uri(char *uri, char *filename, char *cgiargs);
-void serve_static(int fd, char *filename, int filesize);
+void serve_static(int fd, char *method, char *filename, int filesize);
 void get_filetype(char *filename, char *filetype);
 void serve_dynamic(int fd, char *filename, char *cgiargs);
 void clienterror(int fd, char *cause, char *errnum, char *shortmsg,
@@ -59,7 +59,7 @@ void doit(int fd)
 	printf("Request header:\n");
 	printf("%s", buf);
 	sscanf(buf, "%s %s %s", method, uri, version);
-	if (strcasecmp(method, "GET")) // GET 메소드만 지원
+	if (strcasecmp(method, "GET") && strcasecmp(method, "HEAD")) // GET 메소드만 지원
 	{
 		clienterror(fd, method, "501", "Not implemented",
 					"Tiny does not imlement this method");
@@ -83,7 +83,7 @@ void doit(int fd)
 						"Tiny couldn't read the file");
 			return;
 		}
-		serve_static(fd, filename, sbuf.st_size);
+		serve_static(fd, method, filename, sbuf.st_size);
 	}
 	else {
 		// S_IXUSR : 실행 권한을 나타내는 비트 마스크
@@ -110,30 +110,48 @@ void read_requesthdrs(rio_t *rp) {
 int parse_uri(char *uri, char *filename, char *cgiargs) {
 	char *ptr;
 
-	if (!strstr(uri, "cgi-bin")) { // uri에 cgi-bin 없으면
-		strcpy(cgiargs, ""); // cgiargs를 빈 문자열로 초기화
-		strcpy(filename, ".");
-		strcat(filename, uri); // filename = . + uri
-		if (uri[strlen(uri)-1]=='/')
-			strcat(filename, "home.html");
+	// uri에서 ?가 처음으로 나타나는 위치를 가리키는 포인터 반환
+	ptr = index(uri, '?');
+	if (ptr) {
+		strcpy(cgiargs, ptr+1);
+		*ptr = '\0';
+	}
+	else
+		strcpy(cgiargs, "");
+	strcpy(filename, ".");
+	strcat(filename, uri);
+	if (uri[strlen(uri)-1]=='/')
+		strcat(filename, "home.html");
+
+	if (!strstr(uri, "cgi-bin")) // uri에 cgi-bin 없으면
 		return 1;
-	}
-	else {
-		// uri에서 ?가 처음으로 나타나는 위치를 가리키는 포인터 반환
-		ptr = index(uri, '?');
-		if (ptr) {
-			strcpy(cgiargs, ptr+1);
-			*ptr = '\0';
-		}
-		else
-			strcpy(cgiargs, "");
-		strcpy(filename, ".");
-		strcat(filename, uri);
-		return 0;
-	}
+
+	return 0;
+
+	// if (!strstr(uri, "cgi-bin")) { // uri에 cgi-bin 없으면
+	// 	strcpy(cgiargs, ""); // cgiargs를 빈 문자열로 초기화
+	// 	strcpy(filename, ".");
+	// 	strcat(filename, uri); // filename = . + uri
+	// 	if (uri[strlen(uri)-1]=='/')
+	// 		strcat(filename, "home.html");
+	// 	return 1;
+	// }
+	// else {
+	// 	// uri에서 ?가 처음으로 나타나는 위치를 가리키는 포인터 반환
+	// 	ptr = index(uri, '?');
+	// 	if (ptr) {
+	// 		strcpy(cgiargs, ptr+1);
+	// 		*ptr = '\0';
+	// 	}
+	// 	else
+	// 		strcpy(cgiargs, "");
+	// 	strcpy(filename, ".");
+	// 	strcat(filename, uri);
+	// 	return 0;
+	// }
 }
 
-void serve_static(int fd, char *filename, int filesize) {
+void serve_static(int fd, char *method, char *filename, int filesize) {
 	int srcfd;
 	char *srcp, filetype[MAXLINE], buf[MAXBUF];
 
@@ -148,12 +166,17 @@ void serve_static(int fd, char *filename, int filesize) {
 	printf("Response headers:\n"); // 서버 콘솔에 출력
 	printf("%s", buf);
 
-	/* Send response body to client */
-	srcfd = Open(filename, O_RDONLY, 0);
-	srcp = Mmap(0, filesize, PROT_READ, MAP_PRIVATE, srcfd, 0);
-	Close(srcfd);
-	Rio_writen(fd, srcp, filesize);
-	Munmap(srcp, filesize);
+	if (strcasecmp(method, "HEAD")) {
+		/* Send response body to client */
+		srcfd = Open(filename, O_RDONLY, 0);
+		// srcp = Mmap(0, filesize, PROT_READ, MAP_PRIVATE, srcfd, 0);
+		srcp = malloc(filesize);
+		rio_readn(srcfd, srcp, filesize);
+		Close(srcfd);
+		Rio_writen(fd, srcp, filesize);
+		free(srcp);
+		// Munmap(srcp, filesize);
+	}
 }
 
 void serve_dynamic(int fd, char *filename, char *cgiargs) {
@@ -184,6 +207,8 @@ void get_filetype(char *filename, char *filetype) {
 		strcpy(filetype, "image/png");
 	else if (strstr(filename, ".jpg"))
 		strcpy(filetype, "image/jpeg");
+	else if (strstr(filename, ".mp4"))
+		strcpy(filetype, "video/mp4");
 	else
 		strcpy(filetype, "text/plain");
 }
